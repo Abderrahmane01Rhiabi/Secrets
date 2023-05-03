@@ -1,8 +1,11 @@
-//jshint esversion:6
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const ejs = require("ejs");
+const encrypt = require('mongoose-encryption');
+
+require('dotenv').config();
+
 
 const app = express();
 
@@ -24,6 +27,10 @@ const userSchema = new mongoose.Schema({
     email: String,
     password: String
 });
+
+const secret = process.env.SOME_LONG_UNGUESSABLE_STRING;
+console.log(process.env.SOME_LONG_UNGUESSABLE_STRING)
+userSchema.plugin(encrypt, { secret : secret, encryptedFields: ['password'] });
 
 const User = new mongoose.model("User", userSchema); // User is the collection name
 
@@ -84,9 +91,9 @@ app.post("/login", (req, res) => {
 
 
 let port = process.env.PORT;
-
+console.log("env : " + port);
 if (port == null || port == "") port = 3000;
 
 app.listen(port, () => {
-    console.log("Server has started Succusfully");
+    console.log(`Starting server on port ${port}`);
 })
