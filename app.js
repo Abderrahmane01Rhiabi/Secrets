@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const ejs = require("ejs");
 // const encrypt = require('mongoose-encryption');
 const md5 = require('md5');
+const bycrypt = require('bcrypt');
+const saltRounds = 10;
 
 const app = express();
 
@@ -49,15 +51,19 @@ app.get("/register", (req, res) => {
 
 app.post("/register", (req, res) => {
     
-    const newUser = new User({
-        email : req.body.email,
-        password : md5(req.body.password)
-    });
-
-
-    newUser.save().then((reply) => { // cre ate a new user
-        res.render("secrets");
-        console.log(reply);
+    bycrypt.hash(req.body.password, saltRounds).then((hash) =>{
+        // Store hash in your password DB.
+        const newUser = new User({
+            email : req.body.email,
+            password : hash
+        });
+    
+        newUser.save().then((reply) => { // create a new user
+            res.render("secrets");
+            console.log(reply);
+        }).catch((err) => {
+            console.log(err);
+        });
     }).catch((err) => {
         console.log(err);
     });
@@ -72,16 +78,23 @@ app.post("/register", (req, res) => {
 app.post("/login", (req, res) => {
 
     const email = req.body.email;
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
     User.findOne({email : email}).then((reply) => {
         // console.log(reply);
         if(reply !== null){ // if email exists
-            if(reply.password === password) { // if password is correct
-                res.render("secrets");
-                console.log(reply);
-            }
-            else res.send("Wrong Password");
+            
+            bycrypt.compare(password, reply.password).then((result) => {
+                    if(result) { // if password is correct
+                        res.render("secrets");
+                        console.log(reply);
+                    }
+                    else{ 
+                        res.send("Wrong Password");
+                    }
+                }).catch((err) => {
+                    console.log(err);
+                });
         } else {
             res.send("Wrong Email");
         }
