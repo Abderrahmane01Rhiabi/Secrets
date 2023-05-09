@@ -4,10 +4,13 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const ejs = require("ejs");
-// const encrypt = require('mongoose-encryption');
 const md5 = require('md5');
-const bycrypt = require('bcrypt');
-const saltRounds = 10;
+
+//add session and passport
+const session = require('express-session');
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+
 
 const app = express();
 
@@ -15,6 +18,17 @@ app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+
+//first 
+app.use(session({
+    secret : "the secret.", //used to encrypt the cookie
+    resave : false, //update session even when no change
+    saveUninitialized : false //only create session when user login
+}));
+
+//second
+app.use(passport.initialize()); //initialize passport package 
+app.use(passport.session()); //use passport to manage our session 
 
 
 mongoose.connect("mongodb://127.0.0.1:27017/userDB ", { useNewUrlParser: true, useUnifiedTopology: true });
@@ -26,15 +40,21 @@ db.once('open', function () {
 });
 
 const userSchema = new mongoose.Schema({ 
-    email: String,
+    username: String,
     password: String
 });
 
-// const secret = process.env.SOME_LONG_UNGUESSABLE_STRING;
-// console.log(process.env.SOME_LONG_UNGUESSABLE_STRING)
-// userSchema.plugin(encrypt, { secret : secret, encryptedFields: ['password'] });
+//third
+//add passportLocalMongoose as a plugin to our userSchema
+userSchema.plugin(passportLocalMongoose); //hash and salt our password and save it to mongodb
+
 
 const User = new mongoose.model("User", userSchema); // User is the collection name
+
+//fourth 
+passport.use(User.createStrategy()); //create local login strategy
+passport.serializeUser(User.serializeUser()); //store user in session
+passport.deserializeUser(User.deserializeUser()); //unstore user in session
 
 
 app.get("/", (req, res) => {
@@ -49,60 +69,52 @@ app.get("/register", (req, res) => {
     res.render("register");
 });
 
+app.get("/secrets", (req, res) => {
+    if(req.isAuthenticated()){
+        res.render("secrets");
+    }else{
+        res.redirect("/login");
+    }
+});
+
+app.get("/logout", (req, res) => {
+    req.logout((err) => {
+        if (err) {
+            console.log(err);
+        }
+        res.redirect("/");
+    });
+});
+
 app.post("/register", (req, res) => {
     
-    bycrypt.hash(req.body.password, saltRounds).then((hash) =>{
-        // Store hash in your password DB.
-        const newUser = new User({
-            email : req.body.email,
-            password : hash
-        });
-    
-        newUser.save().then((reply) => { // create a new user
-            res.render("secrets");
-            console.log(reply);
-        }).catch((err) => {
-            console.log(err);
+    User.register({username : req.body.username}, req.body.password).then((user) => {
+        passport.authenticate("local")(req, res, () => {
+            res.redirect("/secrets");
         });
     }).catch((err) => {
         console.log(err);
+        res.redirect("/register");
     });
-
-    // newUser.save(((err) => {
-    //     if(err) console.log(err);
-    //     else res.render("secrets");
-    // }))
 
 });
 
 app.post("/login", (req, res) => {
-
-    const email = req.body.email;
-    const password = req.body.password;
-
-    User.findOne({email : email}).then((reply) => {
-        // console.log(reply);
-        if(reply !== null){ // if email exists
-            
-            bycrypt.compare(password, reply.password).then((result) => {
-                    if(result) { // if password is correct
-                        res.render("secrets");
-                        console.log(reply);
-                    }
-                    else{ 
-                        res.send("Wrong Password");
-                    }
-                }).catch((err) => {
-                    console.log(err);
-                });
-        } else {
-            res.send("Wrong Email");
-        }
-
-    }).catch((err) => {
-        console.log(err);
+    const user = new User({
+        username: req.body.username,
+        password: req.body.password
     });
 
+    req.login(user, (err) => {
+        if (err) {
+            console.log(err);
+            res.redirect("/login");
+        } else {
+            passport.authenticate("local")(req, res, () => {
+                res.redirect("/secrets");
+            });
+        }
+    });
 });
 
 
